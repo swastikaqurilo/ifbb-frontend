@@ -1,16 +1,127 @@
+// import React from "react";
+
+// /* -------- helpers -------- */
+// const formatDuration = (minutes = 0) => {
+//   const min = Number(minutes) || 0;
+//   const h = Math.floor(min / 60);
+//   const m = min % 60;
+//   return `${h}h ${m}m`;
+// };
+
+// const formatPrice = (value) => {
+//   const num = Number(value);
+//   return isNaN(num) ? "0.00" : num.toFixed(1);
+// };
+
+// function CourseCard({
+//   title,
+//   courseThumbnail,
+//   discountedPrice,
+//   price,
+//   durationToComplete,
+//   _id,
+//   modules,
+//   ratings,
+//   // purchasedByHowMuch,
+//   total_enrolled_user,
+//   actual_price,
+//   handleGetId
+// }) {
+//   // const rating =
+//   //   ratings?.length
+//   //     ? (
+//   //       ratings.reduce((a, b) => a + b, 0) / ratings.length
+//   //     ).toFixed(1)
+//   //     : "0.0";
+
+//   const rating =
+//     ratings.length > 0
+//       ? (
+//         ratings.reduce((sum, r) => sum + (r.value || 0), 0) /
+//         ratings.length
+//       ).toFixed(1)
+//       : "0.0";
+
+
+//   return (
+//     <div className="border border-indigo-400 rounded p-3 w-[320px]  flex flex-col items-start shadow-sm bg-white">
+//       {/* Image */}
+//       <span className="bg-red-600 text-white text-sm m-1 absolute rounded border-none outline-none p-1">
+//         {parseInt(discountedPrice)}%
+//       </span>
+//       <div className="w-full h-48 mb-3 rounded overflow-hidden">
+//         <img
+//           src={courseThumbnail}
+//           alt={title}
+//           className="w-full h-full object-cover"
+//         />
+//       </div>
+
+//       {/* Rating & Price */}
+//       <div className="w-full flex justify-between text-sm font-medium mb-1">
+//         <span className="text-red-500">⭐ {rating}</span>
+
+//         <span className="text-indigo-500 font-semibold">
+//           {discountedPrice ? (
+//             <>
+//               <span className="line-through text-gray-400 mr-1">
+//                 {/* ${formatPrice(discountedPrice)} */}
+//                 ${formatPrice(price)}
+//               </span>
+//               {/* <span>${formatPrice(price)}</span> */}
+//               <span>${formatPrice(actual_price?.$numberDecimal)}</span>
+//               {/* <span className="bg-green-600 text-white position-absolute rounded p-1">{formatPrice(discountedPrice)}%</span> */}
+//             </>
+//           ) : (
+//             <>${formatPrice(discountedPrice)}</>
+//           )}
+//         </span>
+//       </div>
+
+//       {/* Title */}
+//       <h3 className="text-base h-[50px] font-semibold mb-2 p-1">{title}</h3>
+
+//       {/* Meta info */}
+//       <div className="text-sm text-gray-600 flex justify-between w-full mb-4 px-1">
+//         <span>📄 {modules?.length || 0} Module(s)</span>
+//         <span>⏱ {formatDuration(durationToComplete)}</span>
+//         <span>👥 {total_enrolled_user || 0}+</span>
+//       </div>
+
+//       {/* Button */}
+//       <button
+//         className="bg-indigo-700 hover:bg-indigo-800 cursor-pointer  text-white py-2 px-4 rounded text-sm mx-auto w-full"
+//         onClick={() => handleGetId(_id)}
+//       >
+//         Enroll →
+//       </button>
+//     </div>
+//   );
+// }
+
+// export default CourseCard;
+
+
+
+
+
+
 import React from "react";
 
 /* -------- helpers -------- */
+
 const formatDuration = (minutes = 0) => {
   const min = Number(minutes) || 0;
   const h = Math.floor(min / 60);
   const m = min % 60;
+
   return `${h}h ${m}m`;
 };
 
 const formatPrice = (value) => {
   const num = Number(value);
-  return isNaN(num) ? "0.00" : num.toFixed(1);
+
+  return Number.isFinite(num) ? num.toFixed(1) : "0.0";
 };
 
 function CourseCard({
@@ -22,33 +133,50 @@ function CourseCard({
   _id,
   modules,
   ratings,
-  // purchasedByHowMuch,
   total_enrolled_user,
   actual_price,
-  handleGetId
+  handleGetId,
 }) {
-  // const rating =
-  //   ratings?.length
-  //     ? (
-  //       ratings.reduce((a, b) => a + b, 0) / ratings.length
-  //     ).toFixed(1)
-  //     : "0.0";
+  /* -------- Rating -------- */
 
   const rating =
-    ratings.length > 0
+    Array.isArray(ratings) && ratings.length > 0
       ? (
-        ratings.reduce((sum, r) => sum + (r.value || 0), 0) /
-        ratings.length
-      ).toFixed(1)
+          ratings.reduce(
+            (sum, r) => sum + (Number(r?.value) || 0),
+            0
+          ) / ratings.length
+        ).toFixed(1)
       : "0.0";
 
+  /* -------- Discount -------- */
+
+  const discountValue = Number(discountedPrice);
+
+  // Discount badge will ONLY show when discount is a valid number > 0
+  const hasDiscount =
+    Number.isFinite(discountValue) && discountValue > 0;
+
+  /* -------- Prices -------- */
+
+  const originalPrice = Number(price) || 0;
+
+  const finalPrice =
+    actual_price?.$numberDecimal !== undefined
+      ? Number(actual_price.$numberDecimal)
+      : Number(actual_price) || 0;
 
   return (
-    <div className="border border-indigo-400 rounded p-3 w-[320px]  flex flex-col items-start shadow-sm bg-white">
-      {/* Image */}
-      <span className="bg-red-600 text-white text-sm m-1 absolute rounded border-none outline-none p-1">
-        {parseInt(discountedPrice)}%
-      </span>
+    <div className="border border-indigo-400 rounded p-3 w-[320px] flex flex-col items-start shadow-sm bg-white relative">
+
+      {/* -------- Discount Badge -------- */}
+      {hasDiscount && (
+        <span className="bg-red-600 text-white text-sm m-1 absolute top-2 left-2 rounded border-none outline-none p-1 z-10">
+          {discountValue}% 
+        </span>
+      )}
+
+      {/* -------- Image -------- */}
       <div className="w-full h-48 mb-3 rounded overflow-hidden">
         <img
           src={courseThumbnail}
@@ -57,40 +185,60 @@ function CourseCard({
         />
       </div>
 
-      {/* Rating & Price */}
+      {/* -------- Rating & Price -------- */}
       <div className="w-full flex justify-between text-sm font-medium mb-1">
-        <span className="text-red-500">⭐ {rating}</span>
+        
+        {/* Rating */}
+        <span className="text-red-500">
+          ⭐ {rating}
+        </span>
 
+        {/* Price */}
         <span className="text-indigo-500 font-semibold">
-          {discountedPrice ? (
+          {hasDiscount ? (
             <>
+              {/* Original Price */}
               <span className="line-through text-gray-400 mr-1">
-                {/* ${formatPrice(discountedPrice)} */}
-                ${formatPrice(price)}
+                ${formatPrice(originalPrice)}
               </span>
-              {/* <span>${formatPrice(price)}</span> */}
-              <span>${formatPrice(actual_price?.$numberDecimal)}</span>
-              {/* <span className="bg-green-600 text-white position-absolute rounded p-1">{formatPrice(discountedPrice)}%</span> */}
+
+              {/* Discounted Price */}
+              <span>
+                ${formatPrice(finalPrice)}
+              </span>
             </>
           ) : (
-            <>${formatPrice(discountedPrice)}</>
+            /* No Discount */
+            <span>
+              ${formatPrice(originalPrice || finalPrice)}
+            </span>
           )}
         </span>
       </div>
 
-      {/* Title */}
-      <h3 className="text-base h-[50px] font-semibold mb-2 p-1">{title}</h3>
+      {/* -------- Title -------- */}
+      <h3 className="text-base h-[50px] font-semibold mb-2 p-1">
+        {title}
+      </h3>
 
-      {/* Meta info */}
+      {/* -------- Meta Info -------- */}
       <div className="text-sm text-gray-600 flex justify-between w-full mb-4 px-1">
-        <span>📄 {modules?.length || 0} Module(s)</span>
-        <span>⏱ {formatDuration(durationToComplete)}</span>
-        <span>👥 {total_enrolled_user || 0}+</span>
+        <span>
+          📄 {modules?.length || 0} Module(s)
+        </span>
+
+        <span>
+          ⏱ {formatDuration(durationToComplete)}
+        </span>
+
+        <span>
+          👥 {total_enrolled_user || 0}+
+        </span>
       </div>
 
-      {/* Button */}
+      {/* -------- Button -------- */}
       <button
-        className="bg-indigo-700 hover:bg-indigo-800 cursor-pointer  text-white py-2 px-4 rounded text-sm mx-auto w-full"
+        className="bg-indigo-700 hover:bg-indigo-800 cursor-pointer text-white py-2 px-4 rounded text-sm mx-auto w-full"
         onClick={() => handleGetId(_id)}
       >
         Enroll →
