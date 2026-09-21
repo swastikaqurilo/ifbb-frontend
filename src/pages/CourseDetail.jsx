@@ -1,8 +1,23 @@
 import React, { useEffect, useState } from "react";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import { FaStar, FaBook, FaClock, FaLock, FaUnlock, FaSpinner, FaCheckCircle, FaTimesCircle, FaArrowRight, FaCheck, FaTimes, FaChevronUp, FaChevronDown, FaSignInAlt } from "react-icons/fa";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { API_URL } from "../api/apiUrl";
+
+const Toast = () => (
+  <ToastContainer
+    position="top-right"
+    autoClose={4000}
+    hideProgressBar={false}
+    newestOnTop
+    closeOnClick
+    pauseOnHover
+    draggable
+    theme="light"
+  />
+);
 
 const CourseDetail = () => {
   const [openIndex, setOpenIndex] = useState(null);
@@ -167,7 +182,7 @@ const CourseDetail = () => {
 
   useEffect(() => {
     if (searchParams.get("canceled") === "true") {
-      alert("Payment canceled. You can try purchasing again.");
+      toast.warning("Payment canceled. You can try purchasing again.");
     }
     if (searchParams.get("session_id")) {
       setTimeout(() => {
@@ -204,7 +219,7 @@ const CourseDetail = () => {
     }
 
     if (!userEmail || userEmail === "user@example.com") {
-      alert("Please login again to continue.");
+      toast.warning("Please login again to continue.");
       navigate("/login");
       return;
     }
@@ -236,7 +251,7 @@ const CourseDetail = () => {
         error.response?.data?.message ||
         error.message ||
         "Payment initiation failed. Please try again.";
-      alert(errMsg);
+      toast.error(errMsg);
       setIsPurchaseLoading(false);
 
       if (error.response?.status === 401) {
@@ -258,11 +273,11 @@ const CourseDetail = () => {
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      alert("✅ Module marked as complete!");
+      toast.success("Module marked as complete!");
       await fetchCourseData();
     } catch (error) {
       console.error("❌ Error marking module complete:", error);
-      alert("Error marking module as complete. Please try again.");
+      toast.error("Error marking module as complete. Please try again.");
     } finally {
       setCompletingModule(null);
     }
@@ -388,7 +403,13 @@ const CourseDetail = () => {
       setExamSubmitted(true);
 
       if (backendResult.passed) {
-        alert("Congratulations! You passed the exam! Next module unlocked!");
+  toast.success(
+    `You scored ${backendResult.score}% — Exam Passed! Next module unlocked.`,
+    {
+      position: "top-right",
+      autoClose: 4000,
+    }
+  );
         setTimeout(async () => {
           await fetchCourseData();
           setExamMode(false);
@@ -400,19 +421,31 @@ const CourseDetail = () => {
           setSkippedQuestions(new Set());
         }, 2000);
       } else {
-        alert(`❌ You scored ${backendResult.score}%. You need ${backendResult.passPercentage}% to pass. Please try again.`);
-      }
+  toast.error(
+    `You scored ${backendResult.score}%. You need ${backendResult.passPercentage}% to pass. Please try again.`,
+    {
+      position: "top-right",
+      autoClose: 5000,
+    }
+  );
+}
     } catch (error) {
       console.error("❌ ERROR SUBMITTING EXAM");
       if (error.response?.status === 500) {
-        alert("Backend Error 500. Check browser console and backend logs for details.");
+        toast.error("Backend Error 500. Check browser console and backend logs for details.");
       } else if (error.response?.status === 400) {
-        alert("Bad Request: " + (error.response?.data?.message || "Invalid exam submission"));
+        toast.error(
+          "Bad Request: " +
+            (error.response?.data?.message || "Invalid exam submission")
+        );
       } else if (error.response?.status === 401) {
-        alert("Unauthorized. Please login again.");
+        toast.error("Unauthorized. Please login again.");
         navigate("/login");
       } else {
-        alert("Error submitting exam: " + (error.response?.data?.message || error.message));
+        toast.error(
+          "Error submitting exam: " +
+            (error.response?.data?.message || error.message)
+        );
       }
     } finally {
       setExamLoading(false);
@@ -422,13 +455,13 @@ const CourseDetail = () => {
   // ==================== RATING SUBMIT ====================
   const handleRatingSubmit = async () => {
     if (selectedRating === 0) {
-      alert("Please select a star rating before submitting.");
+      toast.warning("Please select a star rating before submitting.");
       return;
     }
 
 
     if (!review.trim()) {
-      alert("Please write a review.");
+      toast.warning("Please write a review.");
       return;
     }
 
@@ -446,7 +479,7 @@ const CourseDetail = () => {
     }
 
     if (!extractedUserId) {
-      alert("User ID not found. Please login again.");
+      toast.error("User ID not found. Please login again.");
       navigate("/login");
       return;
     }
@@ -767,7 +800,7 @@ const CourseDetail = () => {
               title="PDF Viewer"
               onError={(e) => {
                 console.error("❌ PDF Load Error:", e);
-                alert("Error loading PDF. Please check if the link is valid.");
+                toast.error("Error loading PDF. Please check if the link is valid.");
               }}
             />
           </div>
@@ -1023,6 +1056,17 @@ const CourseDetail = () => {
 
   // ==================== NORMAL COURSE VIEW ====================
   return (
+    <>
+    <ToastContainer
+      position="top-right"
+      autoClose={4000}
+      hideProgressBar={false}
+      newestOnTop
+      closeOnClick
+      pauseOnHover
+      draggable
+      theme="light"
+    />
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 py-4 px-2">
       <div className="max-w-[1400px] mx-auto">
         <div className="flex flex-col lg:flex-row gap-8">
@@ -1423,7 +1467,7 @@ const CourseDetail = () => {
 
 
     </div>
-
+   </>
   );
 };
 
