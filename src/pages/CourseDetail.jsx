@@ -1,23 +1,350 @@
 import React, { useEffect, useState } from "react";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { FaStar, FaBook, FaClock, FaLock, FaUnlock, FaSpinner, FaCheckCircle, FaTimesCircle, FaArrowRight, FaCheck, FaTimes, FaChevronUp, FaChevronDown, FaSignInAlt } from "react-icons/fa";
+import { FaStar, FaBook, FaClock, FaLock, FaUnlock, FaSpinner, FaCheckCircle, FaTimesCircle, FaArrowRight, FaCheck, FaTimes, FaChevronUp, FaChevronDown, FaSignInAlt, FaRedoAlt, FaEye, FaExclamationTriangle, FaSignOutAlt } from "react-icons/fa";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { API_URL } from "../api/apiUrl";
 
-const Toast = () => (
-  <ToastContainer
-    position="top-right"
-    autoClose={4000}
-    hideProgressBar={false}
-    newestOnTop
-    closeOnClick
-    pauseOnHover
-    draggable
-    theme="light"
-  />
-);
+// Shared animations for all exam popups
+const POPUP_CSS = `
+  @keyframes examPopIn { from { opacity: 0; transform: translateY(8px) scale(.95); } to { opacity: 1; transform: none; } }
+  @keyframes examFade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes examConfetti {
+    0%   { opacity: 1; transform: translateY(-16px) rotate(var(--r)); }
+    100% { opacity: 0; transform: translateY(230px) rotate(calc(var(--r) + 540deg)); }
+  }
+  .exam-pop { animation: examPopIn .28s cubic-bezier(.2,.9,.3,1.2) both; }
+  .exam-fade { animation: examFade .2s ease-out both; }
+  .exam-confetti { animation-name: examConfetti; animation-timing-function: ease-in; animation-iteration-count: 1; animation-fill-mode: both; }
+  @media (prefers-reduced-motion: reduce) {
+    .exam-pop, .exam-fade { animation: none; }
+    .exam-confetti { display: none; }
+  }
+`;
+
+// ==================== EXAM RESULT POPUP (pass / fail) ====================
+// Full class names are written out so Tailwind can detect them.
+const POPUP_THEMES = {
+  passed: {
+    tint: "bg-emerald-50",
+    badge: "bg-emerald-500 ring-emerald-50",
+    ring: "text-emerald-500",
+    score: "text-emerald-700",
+    primary: "bg-emerald-600 hover:bg-emerald-700 focus-visible:ring-emerald-200",
+  },
+  failed: {
+    tint: "bg-rose-50",
+    badge: "bg-rose-500 ring-rose-50",
+    ring: "text-rose-500",
+    score: "text-rose-700",
+    primary: "bg-rose-600 hover:bg-rose-700 focus-visible:ring-rose-200",
+  },
+};
+
+const CONFETTI_COLORS = ["#10b981", "#f59e0b", "#3b82f6", "#ec4899", "#8b5cf6", "#f97316"];
+const CONFETTI = Array.from({ length: 18 }, (_, i) => ({
+  left: `${(i * 37 + 8) % 100}%`,
+  delay: `${(i % 6) * 0.12}s`,
+  duration: `${1.8 + (i % 5) * 0.25}s`,
+  color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+  tilt: (i * 47) % 360,
+}));
+
+const RING_RADIUS = 52;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+
+const ExamResultPopup = ({
+  open,
+  passed,
+  score = 0,
+  passPercentage = 0,
+  correctCount = 0,
+  totalQuestions = 0,
+  busy = false,
+  onPrimary,
+  onSecondary, // optional - only shown when provided
+}) => {
+  const [displayScore, setDisplayScore] = useState(0);
+
+  // Count the score up when the popup opens
+  useEffect(() => {
+    if (!open) {
+      setDisplayScore(0);
+      return;
+    }
+
+    const target = Math.max(0, Math.min(100, Number(score) || 0));
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduceMotion) {
+      setDisplayScore(target);
+      return;
+    }
+
+    let frame;
+    const start = performance.now();
+    const duration = 900;
+
+    const tick = (now) => {
+      const progress = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplayScore(Math.round(target * eased));
+      if (progress < 1) frame = requestAnimationFrame(tick);
+    };
+
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [open, score]);
+
+  // Escape closes the popup when there is a secondary action
+  useEffect(() => {
+    if (!open || !onSecondary) return;
+    const onKey = (e) => e.key === "Escape" && onSecondary();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onSecondary]);
+
+  if (!open) return null;
+
+  const theme = passed ? POPUP_THEMES.passed : POPUP_THEMES.failed;
+  const roundedScore = Math.round(Number(score) || 0);
+  const gap = Math.max(0, Math.round(passPercentage - roundedScore));
+
+  const title = passed ? "You passed the exam" : "You didn't pass this time";
+  const message = passed
+    ? "Well done. The next module is now unlocked."
+    : `You scored ${roundedScore}% and need ${passPercentage}% to pass. You're ${gap}% short, so go back over the module and try again.`;
+
+  return (
+    <div
+      className="exam-fade fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="exam-result-title"
+    >
+      <style>{POPUP_CSS}</style>
+
+      <div className="exam-pop relative w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl">
+        {/* Score area */}
+        <div className={`relative flex justify-center overflow-hidden pb-10 pt-8 ${theme.tint}`}>
+          {passed &&
+            CONFETTI.map((c, i) => (
+              <span
+                key={i}
+                aria-hidden="true"
+                className="exam-confetti pointer-events-none absolute top-0 block h-3 w-1.5 rounded-sm"
+                style={{
+                  left: c.left,
+                  backgroundColor: c.color,
+                  animationDelay: c.delay,
+                  animationDuration: c.duration,
+                  "--r": `${c.tilt}deg`,
+                }}
+              />
+            ))}
+
+          <div className="relative h-36 w-36">
+            <svg viewBox="0 0 120 120" className="h-full w-full" aria-hidden="true">
+              {/* track */}
+              <circle cx="60" cy="60" r={RING_RADIUS} fill="none" stroke="rgba(15,23,42,0.08)" strokeWidth="8" />
+              {/* progress */}
+              <circle
+                cx="60"
+                cy="60"
+                r={RING_RADIUS}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="8"
+                strokeLinecap="round"
+                strokeDasharray={RING_CIRCUMFERENCE}
+                strokeDashoffset={RING_CIRCUMFERENCE * (1 - displayScore / 100)}
+                transform="rotate(-90 60 60)"
+                className={theme.ring}
+              />
+              {/* pass mark tick */}
+              <line
+                x1="60"
+                y1="1"
+                x2="60"
+                y2="15"
+                stroke="#334155"
+                strokeWidth="2.5"
+                transform={`rotate(${Math.min(100, passPercentage) * 3.6} 60 60)`}
+              />
+            </svg>
+
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className={`text-4xl font-bold tabular-nums ${theme.score}`}>{displayScore}%</span>
+            </div>
+
+            <span
+              className={`absolute -bottom-3 left-1/2 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full text-white ring-4 ${theme.badge}`}
+            >
+              {passed ? <FaCheck size={15} /> : <FaTimes size={15} />}
+            </span>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="px-6 pb-6 pt-6 text-center">
+          <h2 id="exam-result-title" className="text-xl font-bold text-slate-900">
+            {title}
+          </h2>
+          <p className="mx-auto mt-2 max-w-[30ch] text-sm leading-relaxed text-slate-600">{message}</p>
+
+          <div className="mt-5 grid grid-cols-2 divide-x divide-slate-200 rounded-xl border border-slate-200 py-3">
+            <div>
+              <p className="text-lg font-bold text-slate-900">
+                {correctCount}/{totalQuestions}
+              </p>
+              <p className="text-xs text-slate-500">Correct answers</p>
+            </div>
+            <div>
+              <p className="text-lg font-bold text-slate-900">{passPercentage}%</p>
+              <p className="text-xs text-slate-500">Pass mark</p>
+            </div>
+          </div>
+
+          <div className="mt-6 space-y-2">
+            <button
+              type="button"
+              autoFocus
+              onClick={onPrimary}
+              disabled={busy}
+              className={`flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold text-white transition focus:outline-none focus-visible:ring-4 disabled:cursor-not-allowed disabled:opacity-70 ${theme.primary}`}
+            >
+              {busy ? (
+                <>
+                  <FaSpinner className="animate-spin" /> Loading...
+                </>
+              ) : passed ? (
+                <>
+                  Continue to next module <FaArrowRight />
+                </>
+              ) : (
+                <>
+                  <FaRedoAlt /> Retake exam
+                </>
+              )}
+            </button>
+
+            {onSecondary && (
+              <button
+                type="button"
+                onClick={onSecondary}
+                disabled={busy}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 disabled:opacity-70"
+              >
+                <FaEye /> Review answers
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ==================== CONFIRM DIALOG (exit exam / unanswered questions) ====================
+const CONFIRM_THEMES = {
+  warning: {
+    icon: "bg-amber-100 text-amber-600",
+    bar: "bg-amber-500",
+    confirm: "bg-amber-600 hover:bg-amber-700 focus-visible:ring-amber-200",
+  },
+  danger: {
+    icon: "bg-rose-100 text-rose-600",
+    bar: "bg-rose-500",
+    confirm: "bg-rose-600 hover:bg-rose-700 focus-visible:ring-rose-200",
+  },
+};
+
+const ConfirmDialog = ({
+  open,
+  tone = "warning",
+  icon,
+  title,
+  message,
+  progress, // optional: { answered, total }
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+  onConfirm,
+  onCancel,
+}) => {
+  // Escape = cancel (the safe choice)
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => e.key === "Escape" && onCancel?.();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onCancel]);
+
+  if (!open) return null;
+
+  const theme = CONFIRM_THEMES[tone] || CONFIRM_THEMES.warning;
+  const pct =
+    progress && progress.total > 0 ? Math.round((progress.answered / progress.total) * 100) : 0;
+
+  return (
+    <div
+      className="exam-fade fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="confirm-title"
+      aria-describedby="confirm-message"
+      onClick={onCancel}
+    >
+      <style>{POPUP_CSS}</style>
+
+      <div
+        className="exam-pop w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          className={`mx-auto flex h-14 w-14 items-center justify-center rounded-full text-2xl ${theme.icon}`}
+        >
+          {icon}
+        </div>
+
+        <h2 id="confirm-title" className="mt-4 text-lg font-bold text-slate-900">
+          {title}
+        </h2>
+        <p id="confirm-message" className="mx-auto mt-2 max-w-[32ch] text-sm leading-relaxed text-slate-600">
+          {message}
+        </p>
+
+        {progress && (
+          <div className="mt-4">
+            <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+              <div className={`h-full rounded-full ${theme.bar}`} style={{ width: `${pct}%` }} />
+            </div>
+            <p className="mt-1.5 text-xs text-slate-500">
+              {progress.answered} of {progress.total} answered
+            </p>
+          </div>
+        )}
+
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row">
+          <button
+            type="button"
+            autoFocus
+            onClick={onCancel}
+            className="flex-1 rounded-xl border border-slate-200 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className={`flex-1 rounded-xl py-3 text-sm font-semibold text-white transition focus:outline-none focus-visible:ring-4 ${theme.confirm}`}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const CourseDetail = () => {
   const [openIndex, setOpenIndex] = useState(null);
@@ -51,6 +378,20 @@ const CourseDetail = () => {
   const [skippedQuestions, setSkippedQuestions] = useState(new Set());
   const [examResults, setExamResults] = useState(null);
   const [completingModule, setCompletingModule] = useState(null);
+
+  // Exam result popup (pass / fail)
+  const [examPopup, setExamPopup] = useState({
+    open: false,
+    passed: false,
+    score: 0,
+    passPercentage: 0,
+    correctCount: 0,
+    totalQuestions: 0,
+  });
+  const [popupBusy, setPopupBusy] = useState(false);
+
+  // Confirm dialog: null | "exit" | "submit"
+  const [confirmType, setConfirmType] = useState(null);
 
   // ==================== RATING STATES ====================
   const [selectedRating, setSelectedRating] = useState(0);
@@ -182,7 +523,7 @@ const CourseDetail = () => {
 
   useEffect(() => {
     if (searchParams.get("canceled") === "true") {
-      toast.warning("Payment canceled. You can try purchasing again.");
+      alert("Payment canceled. You can try purchasing again.");
     }
     if (searchParams.get("session_id")) {
       setTimeout(() => {
@@ -219,7 +560,7 @@ const CourseDetail = () => {
     }
 
     if (!userEmail || userEmail === "user@example.com") {
-      toast.warning("Please login again to continue.");
+      alert("Please login again to continue.");
       navigate("/login");
       return;
     }
@@ -251,7 +592,7 @@ const CourseDetail = () => {
         error.response?.data?.message ||
         error.message ||
         "Payment initiation failed. Please try again.";
-      toast.error(errMsg);
+      alert(errMsg);
       setIsPurchaseLoading(false);
 
       if (error.response?.status === 401) {
@@ -273,11 +614,11 @@ const CourseDetail = () => {
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      toast.success("Module marked as complete!");
+      alert("✅ Module marked as complete!");
       await fetchCourseData();
     } catch (error) {
       console.error("❌ Error marking module complete:", error);
-      toast.error("Error marking module as complete. Please try again.");
+      alert("Error marking module as complete. Please try again.");
     } finally {
       setCompletingModule(null);
     }
@@ -302,8 +643,16 @@ const CourseDetail = () => {
     }
   };
 
+  // "Exit Exam" button opens the confirm popup
   const exitExam = () => {
-    if (confirm("Are you sure you want to exit the exam?")) {
+    setConfirmType("exit");
+  };
+
+  const handleConfirmDialogConfirm = () => {
+    const type = confirmType;
+    setConfirmType(null);
+
+    if (type === "exit") {
       setExamMode(false);
       setCurrentModuleIndex(null);
       setCurrentQuestionIndex(0);
@@ -311,7 +660,53 @@ const CourseDetail = () => {
       setExamSubmitted(false);
       setSkippedQuestions(new Set());
       setExamResults(null);
+    } else if (type === "submit") {
+      performSubmitExam();
     }
+  };
+
+  const handleConfirmDialogCancel = () => {
+    // For "unanswered" jump to the first question without an answer
+    if (confirmType === "submit" && courseData && currentModuleIndex !== null) {
+      const total = courseData.modules[currentModuleIndex].test.questions.length;
+      for (let i = 0; i < total; i++) {
+        if (selectedAnswers[i] === undefined) {
+          setCurrentQuestionIndex(i);
+          break;
+        }
+      }
+    }
+    setConfirmType(null);
+  };
+
+  // Popup buttons: pass -> back to course (refreshed), fail -> retake
+  const handleExamPopupPrimary = async () => {
+    if (examPopup.passed) {
+      setPopupBusy(true);
+      setExamPopup((p) => ({ ...p, open: false }));
+      setExamMode(false);
+      setCurrentModuleIndex(null);
+      setCurrentQuestionIndex(0);
+      setSelectedAnswers({});
+      setExamSubmitted(false);
+      setExamResults(null);
+      setSkippedQuestions(new Set());
+      await fetchCourseData(); // refreshes so the next module shows as unlocked
+      setPopupBusy(false);
+    } else {
+      // Retake
+      setExamPopup((p) => ({ ...p, open: false }));
+      setCurrentQuestionIndex(0);
+      setSelectedAnswers({});
+      setExamSubmitted(false);
+      setSkippedQuestions(new Set());
+      setExamResults(null);
+    }
+  };
+
+  const handleExamPopupSecondary = () => {
+    // Close the popup and leave the answers summary visible
+    setExamPopup((p) => ({ ...p, open: false }));
   };
 
   const handleAnswerSelect = (optionIndex) => {
@@ -340,7 +735,26 @@ const CourseDetail = () => {
     handleNextQuestion();
   };
 
-  const submitExam = async () => {
+  // Submit button: asks for confirmation first when some questions are unanswered
+  const submitExam = () => {
+    if (!courseData || currentModuleIndex === null || !isLoggedIn) return;
+
+    const total = courseData.modules[currentModuleIndex].test.questions.length;
+    let answered = 0;
+    for (let i = 0; i < total; i++) {
+      if (selectedAnswers[i] !== undefined) answered++;
+    }
+
+    if (answered < total) {
+      setConfirmType("submit");
+      return;
+    }
+
+    performSubmitExam();
+  };
+
+  // Does the actual submit
+  const performSubmitExam = async () => {
     if (!courseData || currentModuleIndex === null || !isLoggedIn) return;
 
     const currentModule = courseData.modules[currentModuleIndex];
@@ -349,13 +763,6 @@ const CourseDetail = () => {
     for (let i = 0; i < currentModule.test.questions.length; i++) {
       if (selectedAnswers[i] !== undefined) {
         answersArray.push({ questionIndex: i, selectedOptionIndex: selectedAnswers[i] });
-      }
-    }
-
-    if (answersArray.length < currentModule.test.questions.length) {
-      const unanswered = currentModule.test.questions.length - answersArray.length;
-      if (!confirm(`You have ${unanswered} unanswered question(s). Do you want to submit anyway?`)) {
-        return;
       }
     }
 
@@ -402,50 +809,26 @@ const CourseDetail = () => {
 
       setExamSubmitted(true);
 
-      if (backendResult.passed) {
-  toast.success(
-    `You scored ${backendResult.score}% — Exam Passed! Next module unlocked.`,
-    {
-      position: "top-right",
-      autoClose: 4000,
-    }
-  );
-        setTimeout(async () => {
-          await fetchCourseData();
-          setExamMode(false);
-          setCurrentModuleIndex(null);
-          setCurrentQuestionIndex(0);
-          setSelectedAnswers({});
-          setExamSubmitted(false);
-          setExamResults(null);
-          setSkippedQuestions(new Set());
-        }, 2000);
-      } else {
-  toast.error(
-    `You scored ${backendResult.score}%. You need ${backendResult.passPercentage}% to pass. Please try again.`,
-    {
-      position: "top-right",
-      autoClose: 5000,
-    }
-  );
-}
+      // Show the pass / fail popup (replaces the old alert() calls)
+      setExamPopup({
+        open: true,
+        passed: backendResult.passed,
+        score: backendResult.score,
+        passPercentage: backendResult.passPercentage,
+        correctCount: backendResult.correctCount,
+        totalQuestions: backendResult.totalQuestions,
+      });
     } catch (error) {
       console.error("❌ ERROR SUBMITTING EXAM");
       if (error.response?.status === 500) {
-        toast.error("Backend Error 500. Check browser console and backend logs for details.");
+        alert("Backend Error 500. Check browser console and backend logs for details.");
       } else if (error.response?.status === 400) {
-        toast.error(
-          "Bad Request: " +
-            (error.response?.data?.message || "Invalid exam submission")
-        );
+        alert("Bad Request: " + (error.response?.data?.message || "Invalid exam submission"));
       } else if (error.response?.status === 401) {
-        toast.error("Unauthorized. Please login again.");
+        alert("Unauthorized. Please login again.");
         navigate("/login");
       } else {
-        toast.error(
-          "Error submitting exam: " +
-            (error.response?.data?.message || error.message)
-        );
+        alert("Error submitting exam: " + (error.response?.data?.message || error.message));
       }
     } finally {
       setExamLoading(false);
@@ -455,13 +838,13 @@ const CourseDetail = () => {
   // ==================== RATING SUBMIT ====================
   const handleRatingSubmit = async () => {
     if (selectedRating === 0) {
-      toast.warning("Please select a star rating before submitting.");
+      alert("Please select a star rating before submitting.");
       return;
     }
 
 
     if (!review.trim()) {
-      toast.warning("Please write a review.");
+      alert("Please write a review.");
       return;
     }
 
@@ -479,7 +862,7 @@ const CourseDetail = () => {
     }
 
     if (!extractedUserId) {
-      toast.error("User ID not found. Please login again.");
+      alert("User ID not found. Please login again.");
       navigate("/login");
       return;
     }
@@ -800,7 +1183,7 @@ const CourseDetail = () => {
               title="PDF Viewer"
               onError={(e) => {
                 console.error("❌ PDF Load Error:", e);
-                toast.error("Error loading PDF. Please check if the link is valid.");
+                alert("Error loading PDF. Please check if the link is valid.");
               }}
             />
           </div>
@@ -827,6 +1210,62 @@ const CourseDetail = () => {
     const currentQuestion = questions[currentQuestionIndex];
     const totalQuestions = questions.length;
     const answeredCount = Object.keys(selectedAnswers).length;
+
+    // Exam result popup (shown on top of both exam screens)
+    const examPopupEl = (
+      <ExamResultPopup
+        open={examPopup.open}
+        passed={examPopup.passed}
+        score={examPopup.score}
+        passPercentage={examPopup.passPercentage}
+        correctCount={examPopup.correctCount}
+        totalQuestions={examPopup.totalQuestions}
+        busy={popupBusy}
+        onPrimary={handleExamPopupPrimary}
+        onSecondary={examPopup.passed ? undefined : handleExamPopupSecondary}
+      />
+    );
+
+    // Confirm popup for "Exit Exam" and "Submit with unanswered questions"
+    const unansweredCount = totalQuestions - answeredCount;
+    const confirmConfig =
+      confirmType === "exit"
+        ? {
+            tone: "danger",
+            icon: <FaSignOutAlt />,
+            title: "Exit the exam?",
+            message:
+              answeredCount > 0
+                ? `Your ${answeredCount} answered question${answeredCount === 1 ? "" : "s"} will be lost and you'll go back to the course.`
+                : "You'll go back to the course page.",
+            confirmLabel: "Exit exam",
+            cancelLabel: "Keep going",
+            progress: null,
+          }
+        : {
+            tone: "warning",
+            icon: <FaExclamationTriangle />,
+            title: "Submit with unanswered questions?",
+            message: `You have ${unansweredCount} unanswered question${unansweredCount === 1 ? "" : "s"}. You can go back and answer ${unansweredCount === 1 ? "it" : "them"}, or submit now.`,
+            confirmLabel: "Submit anyway",
+            cancelLabel: "Review unanswered",
+            progress: { answered: answeredCount, total: totalQuestions },
+          };
+
+    const confirmEl = (
+      <ConfirmDialog
+        open={confirmType !== null}
+        tone={confirmConfig.tone}
+        icon={confirmConfig.icon}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        progress={confirmConfig.progress}
+        confirmLabel={confirmConfig.confirmLabel}
+        cancelLabel={confirmConfig.cancelLabel}
+        onConfirm={handleConfirmDialogConfirm}
+        onCancel={handleConfirmDialogCancel}
+      />
+    );
 
     if (examSubmitted && examResults) {
       return (
@@ -925,6 +1364,7 @@ const CourseDetail = () => {
               </div>
             </div>
           </div>
+          {examPopupEl}
         </div>
       );
     }
@@ -1050,23 +1490,14 @@ const CourseDetail = () => {
             </div>
           </div>
         </div>
+        {examPopupEl}
+        {confirmEl}
       </div>
     );
   }
 
   // ==================== NORMAL COURSE VIEW ====================
   return (
-    <>
-    <ToastContainer
-      position="top-right"
-      autoClose={4000}
-      hideProgressBar={false}
-      newestOnTop
-      closeOnClick
-      pauseOnHover
-      draggable
-      theme="light"
-    />
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 py-4 px-2">
       <div className="max-w-[1400px] mx-auto">
         <div className="flex flex-col lg:flex-row gap-8">
@@ -1467,7 +1898,7 @@ const CourseDetail = () => {
 
 
     </div>
-   </>
+
   );
 };
 
