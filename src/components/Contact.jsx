@@ -31,7 +31,7 @@ useEffect(() => {
 
   
 //     const response = await fetch(
-//       "https://api.ifbb.qurilo.com/api/user/get-all-courses-title",{
+//       "https://api.ifbbacademyaustralia.com/api/user/get-all-courses-title",{
 
 //          method: "GET",
 //           headers: {
@@ -60,7 +60,7 @@ useEffect(() => {
 const fetchCourses = async () => {
   try {
     const response = await fetch(
-      "https://api.ifbb.qurilo.com/api/user/get-all-courses-title"
+      "https://api.ifbbacademyaustralia.com/api/user/get-all-courses-title"
     );
 
     const data = await response.json();
@@ -146,7 +146,7 @@ const fetchCourses = async () => {
 
     try {
       // const response = await fetch(
-      //   "https://api.ifbb.qurilo.com/api/course-inquiry",
+      //   "https://api.ifbbacademyaustralia.com/api/course-inquiry",
       //   {
       //     method: "POST",
       //     headers: {
@@ -160,7 +160,7 @@ const fetchCourses = async () => {
 
 
 const response = await fetch(
-  "https://api.ifbb.qurilo.com/api/user/get-all-courses-title",
+  "https://api.ifbbacademyaustralia.com/api/user/get-all-courses-title",
   {
     method: "GET",
   }

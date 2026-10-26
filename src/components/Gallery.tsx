@@ -17,7 +17,7 @@ export default function Gallery() {
   const [loading, setLoading] = useState(true);
   const [imageLoaded, setImageLoaded] = useState<Record<string, boolean>>({});
 
-  const API_URL = "https://api.ifbb.qurilo.com/api/gallery";
+  const API_URL = "https://api.ifbbacademyaustralia.com/api/gallery";
 
   // Fetch images from API
   useEffect(() => {

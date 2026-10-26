@@ -881,7 +881,7 @@ const CourseDetail = () => {
       console.log(payload);
 
       const response = await axios.post(
-        `https://api.ifbb.qurilo.com/api/user/course/user-rating`,
+        `https://api.ifbbacademyaustralia.com/api/user/course/user-rating`,
 
         payload,
         {

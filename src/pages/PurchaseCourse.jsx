@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 /* -------- Base URL -------- */
-const BASE_URL = 'https://api.ifbb.qurilo.com';
+const BASE_URL = 'https://api.ifbbacademyaustralia.com';
 
 /* -------- Helpers -------- */
 const formatDuration = (minutes = 0) => {

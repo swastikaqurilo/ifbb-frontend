@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import axios from 'axios'
 // import CertificatesInfo from './CertificatesInfo'
 
-const API_BASE_URL = 'https://api.ifbb.qurilo.com/api/certificates'
+const API_BASE_URL = 'https://api.ifbbacademyaustralia.com/api/certificates'
 
 const CertificatesImg = () => {
   const [certificates, setCertificates] = useState({})

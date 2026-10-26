@@ -12,7 +12,7 @@ const Affilation = () => {
     const fetchimage = async () => {
       try {
         const token = localStorage.getItem("user-auth-token");
-        const res = await fetch("https://api.ifbb.qurilo.com/api/admin/affiliations", {
+        const res = await fetch("https://api.ifbbacademyaustralia.com/api/admin/affiliations", {
           headers: {
             Authorization: `Bearer ${token}`,
           },

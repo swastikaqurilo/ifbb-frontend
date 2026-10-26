@@ -20,7 +20,7 @@ function News() {
     const fetchNews = async () => {
       setLoading(true);
       try {
-        const response = await fetch('https://api.ifbb.qurilo.com/api/news', {
+        const response = await fetch('https://api.ifbbacademyaustralia.com/api/news', {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
